@@ -6,9 +6,9 @@ const router = express.Router();
 router.post('/todoslosUsuarios', todosLosUsuarios);
 router.post('/register', registerUser);
 router.post('/login', loginUser);
-router.post('/roles', checkToken, getRoles);
-router.put('/update/:id', checkToken, updateUser);
-router.post('/porId/:id', checkToken, usuarioPorId);
+router.post('/roles', getRoles);
+router.put('/update/:id', updateUser);
+router.post('/porId/:id', usuarioPorId);
 router.post('/cambiar-password', changePassword); 
 
 

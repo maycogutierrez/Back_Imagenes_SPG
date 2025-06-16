@@ -7,10 +7,10 @@ const router = express.Router();
 router.post('/crear', crearEstudio);
 router.post('/agregarDetalle', agregarEstudioDetalle);
 router.post('/obtener', obtenerEstudios);
-router.post('/detalles', checkToken,obtenerDetallesDeEstudio);
+router.post('/detalles', obtenerDetallesDeEstudio);
 router.get('/tipos', obtenerTiposEstudios);
-router.post('/actualizarDescripcion', checkToken, actualizarDescripcion);
-router.post('/actualizarEstudio', checkToken, actualizarEstudio);
+router.post('/actualizarDescripcion',  actualizarDescripcion);
+router.post('/actualizarEstudio',  actualizarEstudio);
 router.post('/agregarTipoEstudio', agregarTipoEstudio);
 
 

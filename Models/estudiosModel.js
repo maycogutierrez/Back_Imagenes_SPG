@@ -43,7 +43,8 @@ export const getEstudioDetalles = async (estudio_id) => {
     LEFT JOIN imagenes_estudios ie 
     ON ed.estudio_id = ie.estudio_id 
     WHERE ed.estudio_id = ? AND ed.estado = 1
-    GROUP BY ed.estudio_id`;  
+    GROUP BY ed.estudio_id, ed.descripcion, ed.fecha_subida, ed.estado, ed.dni_detalle
+`;  
     const [rows] = await db.query(query, [estudio_id]);
     const detalle = rows.map(row =>({
         estudio_id: row.estudio_id,
