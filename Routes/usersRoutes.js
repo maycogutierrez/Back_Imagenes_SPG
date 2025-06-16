@@ -3,7 +3,7 @@ import { checkToken, getRoles, loginUser, registerUser, todosLosUsuarios, update
 
 const router = express.Router();
 
-router.post('/todoslosUsuarios', checkToken, todosLosUsuarios);
+router.post('/todoslosUsuarios', todosLosUsuarios);
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/roles', checkToken, getRoles);

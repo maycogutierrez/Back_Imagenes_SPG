@@ -23,8 +23,6 @@ export const agregarEstudioDetalle = async (req, res) => {
 export const obtenerEstudios = async (req, res) => {
     try {
         const { dni } = req.body;
-        console.log(req.body)
-
         if (!dni) {
             return res.status(400).json({ error: "DNI es requerido" });
         }
@@ -64,7 +62,7 @@ export const obtenerTiposEstudios = async (req, res) => {
 export const updateDetalleEstudio = async (req, res) => {
     const { id, descripcion } = req.body
     try {
-        const detalles = await getEstudioDetalles(estudioId);
+        const detalles = await getEstudioDetalles(id);
         res.status(200).json({ detalles });
     } catch (error) {
         res.status(500).json({ error: "Error al obtener detalles del estudio" });

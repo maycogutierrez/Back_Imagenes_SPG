@@ -4,6 +4,7 @@ import db from './config/db.js';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import crypto from 'crypto';
 
 // Obtener el directorio actual con import.meta.url
 const __filename = fileURLToPath(import.meta.url);
@@ -12,16 +13,8 @@ const __dirname = dirname(__filename);
 // Ruta al script de Python
 const pythonScriptPath = join(__dirname, './convert_dicom.py');
 
-const imagesFolder = '/home/gatti/images';  // Carpeta de imágenes DICOM en la VPS Ubuntu  // Carpeta de imágenes DICOM
-/* 
-Si el ordenador cliente tiene una dirección IP fija asignada en él, puede especificar la dirección IP 
-manualmente incluyéndola en el nombre de ruta de la carpeta de destino. Por ejemplo, si la dirección IP es 
-"192.168.1.191" y el nombre de la carpeta compartida es "usuario", introduzca "\\192.168.1.191\usuario" 
-como ruta. 
-const imagesFolder = path.join('\\\\192.168.1.191', 'images'); si esta en la carpta raiz queda asi
-const imagesFolder = path.join('\\\\192.168.1.191', 'digitalizadora' , 'images'); si no esta en la carpta raiz queda asi,
-hay que ir agregando las carptas entre comillas y separadas por ','
-*/
+const imagesFolder = '/home/gatti/imagen_prueba/';  // Carpeta de imágenes DICOM en la VPS Ubuntu  // Carpeta de imágenes DICOM
+
 const outputFolder = 'imgs';  // Carpeta de imágenes convertidas
 
 // Función para obtener el último tiempo de ejecución
@@ -45,13 +38,13 @@ const registerImage = async (estudioId, imagePath) => {
 };
 
 // Función para crear un detalle vacío para el estudio recién creado
-const createEmptyEstudioDetail = async (estudioId) => {
+const createEmptyEstudioDetail = async (estudioId, dniPaciente) => {
     const today =new Date().toISOString().replace('T', ' ').split('.')[0];  // Formato: YYYY-MM-DD HH:MM:SS
 
     try {
         await db.query(
-            `INSERT INTO estudio_detalles (estudio_id, descripcion, fecha_subida, estado) VALUES (?, ?, ?, ?)`,
-            [estudioId, '', today, 1]
+            `INSERT INTO estudio_detalles (estudio_id, descripcion, fecha_subida, estado, dni_detalle) VALUES (?, ?, ?, ?, ?)`,
+            [estudioId, '', today, 1, dniPaciente]
         );
         console.log(`Detalle vacío registrado para el estudio ID ${estudioId}`);
     } catch (err) {
@@ -95,7 +88,7 @@ const createNewEstudio = async (dniPaciente, tipoEstudioId, fecha) => {
         );
         const estudioId = result.insertId;  // Devuelve el ID auto-generado
         // Crear un detalle vacío para este estudio
-        await createEmptyEstudioDetail(estudioId);
+        await createEmptyEstudioDetail(estudioId, dniPaciente);
         return estudioId;
     } catch (err) {
         console.error('Error al crear nuevo estudio:', err.message);
@@ -106,7 +99,7 @@ const createNewEstudio = async (dniPaciente, tipoEstudioId, fecha) => {
 // Función para ejecutar el script de Python
 const runPythonScript = (inputDir, outputDir) => {
     return new Promise((resolve, reject) => {
-        const command = `python "${pythonScriptPath}" "${inputDir}" "${outputDir}"`;
+        const command = `python3 "${pythonScriptPath}" "${inputDir}" "${outputDir}"`;
         exec(command, (error, stdout, stderr) => {
             if (error) {
                 reject(`Error al ejecutar el script de Python: ${error.message}`);
@@ -119,17 +112,39 @@ const runPythonScript = (inputDir, outputDir) => {
     });
 };
 
+const getByDni = async (dni) => {
+    const [rows] = await db.query('SELECT * FROM users WHERE dni = ?', [dni]);
+    return rows;
+};
+
+const insertUser = async (dni, password, role_id) => {
+    await db.query(
+        `INSERT INTO users (dni, password, role_id) VALUES (?, ?, ?)`,
+        [dni, password, role_id]
+    );
+};
+
 // Función para procesar las imágenes de un paciente
 const processImagesForPatient = async (patientFolderPath, fecha) => {
-    const files = getImagesFromFolder(patientFolderPath);  // Obtener todas las imágenes de la carpeta del paciente
+    const files = getImagesFromFolder(patientFolderPath);
 
     if (files.length > 0) {
-        const dniPaciente = extractEstudioIdFromPath(patientFolderPath);  // Extraer DNI del paciente desde la subcarpeta
+        const dniPaciente = extractEstudioIdFromPath(patientFolderPath);
         console.log(`Procesando estudios para el paciente con DNI: ${dniPaciente}`);
+
+        // Validar si el usuario ya existe
+        const existingUser = await getByDni(dniPaciente);
+        if (!existingUser || existingUser.length === 0) {
+            // Generar password aleatorio
+            const randomPassword = crypto.randomBytes(8).toString('hex');
+            // Aquí puedes hashear el password si tu sistema lo requiere
+            await insertUser(dniPaciente, randomPassword, 3); // rol 3 = paciente
+            console.log(`Usuario creado automáticamente para DNI: ${dniPaciente}`);
+        }
 
         const tipoEstudioId = 1;  // Ejemplo: Radiografía
 
-        // Crear un nuevo estudio para el paciente (Asegura que se crea un estudio por paciente)
+        // Crear un nuevo estudio para el paciente
         const estudioId = await createNewEstudio(dniPaciente, tipoEstudioId, fecha);
 
         // Crear la estructura de carpetas en "imgs" para la fecha y DNI
@@ -150,7 +165,7 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
         // Buscar los archivos JPG generados en la carpeta de salida
         const convertedFiles = getImagesFromFolder(pacienteFolderPath);
         for (const jpgPath of convertedFiles) {
-            const imagePath = `http://localhost:5000/${path.relative(process.cwd(), jpgPath).replace(/\\/g, '/')}`;
+            const imagePath = `http://172.16.18.167/api/${path.relative(process.cwd(), jpgPath).replace(/\\/g, '/')}`;
             await registerImage(estudioId, imagePath);
             console.log(`Registrando imagen: ${jpgPath} para el estudio ${estudioId} en ${imagePath}`);
         }

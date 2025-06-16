@@ -20,7 +20,11 @@ const port = process.env.PORT;
 
 app.use(morgan('dev'));
 app.use(express.json());
-app.use(cors());
+
+app.use(cors({
+    origin: '*', // o el dominio de tu frontend
+    allowedHeaders: ['Content-Type', 'user_token'],
+}));
 
 
 
