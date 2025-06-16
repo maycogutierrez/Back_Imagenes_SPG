@@ -12,7 +12,7 @@ const __dirname = dirname(__filename);
 // Ruta al script de Python
 const pythonScriptPath = join(__dirname, './convert_dicom.py');
 
-const imagesFolder = path.join(process.cwd(), 'images');  // Carpeta de imágenes DICOM
+const imagesFolder = '/home/gatti/images';  // Carpeta de imágenes DICOM en la VPS Ubuntu  // Carpeta de imágenes DICOM
 /* 
 Si el ordenador cliente tiene una dirección IP fija asignada en él, puede especificar la dirección IP 
 manualmente incluyéndola en el nombre de ruta de la carpeta de destino. Por ejemplo, si la dirección IP es 
