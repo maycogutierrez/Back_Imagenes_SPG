@@ -1,6 +1,6 @@
 import express from 'express';
 import { crearEstudio, agregarEstudioDetalle, obtenerEstudios, obtenerDetallesDeEstudio, obtenerTiposEstudios, actualizarDescripcion, actualizarEstudio, agregarTipoEstudio } from '../Controller/estudiosController.js';
-import { checkToken } from '../Controller/userController.js';
+
 
 const router = express.Router();
 

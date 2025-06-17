@@ -29,8 +29,7 @@ app.use(cors({
 
 
 
-app.use('/images', express.static(path.join(__dirname, 'images')));
-app.use('/imgs', express.static(path.join(__dirname, 'imgs')));
+app.use('/api/imgs', express.static(path.join(__dirname, 'imgs')));
 
 app.use('/api/users', userRoutes);
 app.use('/api/estudios', estudiosRoutes);

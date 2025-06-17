@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
 // Ruta al script de Python
 const pythonScriptPath = join(__dirname, './convert_dicom.py');
 
-const imagesFolder = '/home/gatti/imagen_prueba/';  // Carpeta de imágenes DICOM en la VPS Ubuntu  // Carpeta de imágenes DICOM
+const imagesFolder = '/home/gatti/images/';  // Carpeta de imágenes DICOM en la VPS Ubuntu  // Carpeta de imágenes DICOM
 
 const outputFolder = 'imgs';  // Carpeta de imágenes convertidas
 
