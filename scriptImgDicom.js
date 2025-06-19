@@ -13,8 +13,7 @@ const __dirname = dirname(__filename);
 // Ruta al script de Python
 const pythonScriptPath = join(__dirname, './convert_dicom.py');
 
-const imagesFolder = '/home/gatti/images/';  // Carpeta de imágenes DICOM en la VPS Ubuntu  // Carpeta de imágenes DICOM
-
+const imagesFolder = '/home/gatti/images/';  // Carpeta de imágenes DICOM en la VPS Ubuntu
 const outputFolder = 'imgs';  // Carpeta de imágenes convertidas
 
 // Función para obtener el último tiempo de ejecución
@@ -39,8 +38,7 @@ const registerImage = async (estudioId, imagePath) => {
 
 // Función para crear un detalle vacío para el estudio recién creado
 const createEmptyEstudioDetail = async (estudioId, dniPaciente) => {
-    const today =new Date().toISOString().replace('T', ' ').split('.')[0];  // Formato: YYYY-MM-DD HH:MM:SS
-
+    const today = new Date().toISOString().replace('T', ' ').split('.')[0];  // Formato: YYYY-MM-DD HH:MM:SS
     try {
         await db.query(
             `INSERT INTO estudio_detalles (estudio_id, descripcion, fecha_subida, estado, dni_detalle) VALUES (?, ?, ?, ?, ?)`,
@@ -52,7 +50,7 @@ const createEmptyEstudioDetail = async (estudioId, dniPaciente) => {
     }
 };
 
-// Función para obtener las imágenes de las carpetas
+// Función para obtener las imágenes de las carpetas (solo extensiones comunes y DICOM)
 const getImagesFromFolder = (folderPath) => {
     let files = [];
     const items = fs.readdirSync(folderPath);
@@ -63,12 +61,28 @@ const getImagesFromFolder = (folderPath) => {
 
         if (stats.isDirectory()) {
             files = files.concat(getImagesFromFolder(itemPath));  // Obtener imágenes de subdirectorios
-        } else if (stats.isFile() && item.match(/\.(dcm|jpg|jpeg|png|gif|bmp)$/i)) {  // Buscar archivos DICOM o convertidos
+        } else if (stats.isFile() && item.match(/\.(dcm|dicom|jpg|jpeg|png|gif|bmp)$/i)) {  // Buscar archivos DICOM o convertidos
             files.push(itemPath);
         }
     });
 
     return files;
+};
+
+// Función para obtener sólo archivos DICOM (.dcm) en una carpeta y subcarpetas
+const getDicomFilesFromFolder = (folderPath) => {
+    let dicomFiles = [];
+    const items = fs.readdirSync(folderPath);
+    items.forEach(item => {
+        const itemPath = path.join(folderPath, item);
+        const stats = fs.statSync(itemPath);
+        if (stats.isDirectory()) {
+            dicomFiles = dicomFiles.concat(getDicomFilesFromFolder(itemPath));
+        } else if (stats.isFile() && item.toLowerCase().endsWith('.dcm')) {
+            dicomFiles.push(itemPath);
+        }
+    });
+    return dicomFiles;
 };
 
 // Función para extraer el DNI del paciente desde el nombre de la subcarpeta
@@ -78,16 +92,23 @@ const extractEstudioIdFromPath = (folderPath) => {
     return dirName;  // Asumiendo que el nombre de la subcarpeta es el DNI
 };
 
+// Nueva función para verificar si ya existe un estudio para DNI + fecha + tipo
+const getExistingEstudio = async (dniPaciente, fecha, tipoEstudioId) => {
+    const [rows] = await db.query(
+        `SELECT id FROM estudios WHERE dni_paciente = ? AND fecha_estudio = ? AND tipo_estudio_id = ? LIMIT 1`,
+        [dniPaciente, fecha, tipoEstudioId]
+    );
+    return rows.length > 0 ? rows[0].id : null;
+};
+
 // Función para crear un nuevo estudio
 const createNewEstudio = async (dniPaciente, tipoEstudioId, fecha) => {
     try {
-        // Insertar un nuevo estudio con el DNI del paciente y el tipo de estudio
         const [result] = await db.query(
             `INSERT INTO estudios (dni_paciente, fecha_estudio, tipo_estudio_id, estado) VALUES (?, ?, ?, ?)`,
             [dniPaciente, fecha, tipoEstudioId, 0]
         );
-        const estudioId = result.insertId;  // Devuelve el ID auto-generado
-        // Crear un detalle vacío para este estudio
+        const estudioId = result.insertId;
         await createEmptyEstudioDetail(estudioId, dniPaciente);
         return estudioId;
     } catch (err) {
@@ -126,51 +147,63 @@ const insertUser = async (dni, password, role_id) => {
 
 // Función para procesar las imágenes de un paciente
 const processImagesForPatient = async (patientFolderPath, fecha) => {
-    const files = getImagesFromFolder(patientFolderPath);
+    // Buscamos solo archivos DICOM para validar existencia
+    const dicomFiles = getDicomFilesFromFolder(patientFolderPath);
 
-    if (files.length > 0) {
-        const dniPaciente = extractEstudioIdFromPath(patientFolderPath);
-        console.log(`Procesando estudios para el paciente con DNI: ${dniPaciente}`);
+    if (dicomFiles.length === 0) {
+        console.log(`No se encontraron archivos DICOM para el paciente ${path.basename(patientFolderPath)} en fecha ${fecha}, no se crea estudio.`);
+        return;  // Salimos sin crear estudio ni registrar imágenes
+    }
 
-        // Validar si el usuario ya existe
-        const existingUser = await getByDni(dniPaciente);
-        if (!existingUser || existingUser.length === 0) {
-            // Generar password aleatorio
-            const randomPassword = crypto.randomBytes(8).toString('hex');
-            // Aquí puedes hashear el password si tu sistema lo requiere
-            await insertUser(dniPaciente, randomPassword, 3); // rol 3 = paciente
-            console.log(`Usuario creado automáticamente para DNI: ${dniPaciente}`);
-        }
+    // Si hay DICOMs, seguimos con el proceso
+    const files = getImagesFromFolder(patientFolderPath);  // Usamos esta para buscar dcm + convertidos
 
-        const tipoEstudioId = 1;  // Ejemplo: Radiografía
+    const dniPaciente = extractEstudioIdFromPath(patientFolderPath);
+    console.log(`Procesando estudios para el paciente con DNI: ${dniPaciente}`);
 
-        // Crear un nuevo estudio para el paciente
-        const estudioId = await createNewEstudio(dniPaciente, tipoEstudioId, fecha);
+    // Validar si el usuario ya existe
+    const existingUser = await getByDni(dniPaciente);
+    if (!existingUser || existingUser.length === 0) {
+        const randomPassword = crypto.randomBytes(8).toString('hex');
+        await insertUser(dniPaciente, randomPassword, 3);
+        console.log(`Usuario creado automáticamente para DNI: ${dniPaciente}`);
+    }
 
-        // Crear la estructura de carpetas en "imgs" para la fecha y DNI
-        const fechaFolderPath = path.join(outputFolder, fecha);
-        const pacienteFolderPath = path.join(fechaFolderPath, dniPaciente);
+    const tipoEstudioId = 1;
 
-        // Asegurarse de que las carpetas existen
-        if (!fs.existsSync(fechaFolderPath)) {
-            fs.mkdirSync(fechaFolderPath, { recursive: true });
-        }
-        if (!fs.existsSync(pacienteFolderPath)) {
-            fs.mkdirSync(pacienteFolderPath, { recursive: true });
-        }
-
-        // Ejecutar el script de Python para convertir los archivos DICOM a JPG
-        await runPythonScript(patientFolderPath, pacienteFolderPath);
-
-        // Buscar los archivos JPG generados en la carpeta de salida
-        const convertedFiles = getImagesFromFolder(pacienteFolderPath);
-        for (const jpgPath of convertedFiles) {
-            const imagePath = `http://172.16.18.167/api/${path.relative(process.cwd(), jpgPath).replace(/\\/g, '/')}`;
-            await registerImage(estudioId, imagePath);
-            console.log(`Registrando imagen: ${jpgPath} para el estudio ${estudioId} en ${imagePath}`);
-        }
+    // Buscar estudio existente o crear uno nuevo
+    let estudioId = await getExistingEstudio(dniPaciente, fecha, tipoEstudioId);
+    if (!estudioId) {
+        estudioId = await createNewEstudio(dniPaciente, tipoEstudioId, fecha);
     } else {
-        console.log(`No se encontraron imágenes DICOM o convertidas en la carpeta del paciente ${path.basename(patientFolderPath)}`);
+        console.log(`Estudio ya existente para DNI ${dniPaciente}, fecha ${fecha}`);
+    }
+
+    const fechaFolderPath = path.join(outputFolder, fecha);
+    const pacienteFolderPath = path.join(fechaFolderPath, dniPaciente);
+
+    if (!fs.existsSync(pacienteFolderPath)) {
+        fs.mkdirSync(pacienteFolderPath, { recursive: true });
+    }
+
+    await runPythonScript(patientFolderPath, pacienteFolderPath);
+
+    const convertedFiles = getImagesFromFolder(pacienteFolderPath);
+    for (const jpgPath of convertedFiles) {
+        const imagePath = `http://172.16.18.167/api/${path.relative(process.cwd(), jpgPath).replace(/\\/g, '/')}`;
+
+        // Verificar si la imagen ya está registrada
+        const [exists] = await db.query(
+            'SELECT 1 FROM imagenes_estudios WHERE estudio_id = ? AND imagen_url = ? LIMIT 1',
+            [estudioId, imagePath]
+        );
+
+        if (exists.length === 0) {
+            await registerImage(estudioId, imagePath);
+            console.log(`Registrando imagen: ${jpgPath} para el estudio ${estudioId}`);
+        } else {
+            console.log(`Imagen ya registrada: ${imagePath}`);
+        }
     }
 };
 
@@ -180,20 +213,17 @@ const updateImagesDicom = async () => {
         const lastRunTime = await getLastRunTime();
         const directories = fs.readdirSync(imagesFolder).filter(item => fs.statSync(path.join(imagesFolder, item)).isDirectory());
 
-        // Recorre cada carpeta (que corresponde a una fecha)
         for (const dir of directories) {
             const folderPath = path.join(imagesFolder, dir);
             const stats = fs.statSync(folderPath);
 
-            // Comprobar si la carpeta de fecha fue modificada después de la última ejecución
             if (stats.mtime.getTime() > lastRunTime.getTime()) {
-                const fecha = dir;  // Usar el nombre de la carpeta como fecha
-                // Ahora dentro de cada carpeta de fecha, recorrer las subcarpetas (que representan los DNIs)
+                const fecha = dir;
                 const subDirs = fs.readdirSync(folderPath).filter(item => fs.statSync(path.join(folderPath, item)).isDirectory());
 
                 for (const subDir of subDirs) {
                     const patientFolderPath = path.join(folderPath, subDir);
-                    await processImagesForPatient(patientFolderPath, fecha);  // Procesar imágenes de cada paciente
+                    await processImagesForPatient(patientFolderPath, fecha);
                 }
             } else {
                 console.log(`La carpeta de fecha ${dir} no ha sido modificada desde la última ejecución.`);
@@ -201,13 +231,14 @@ const updateImagesDicom = async () => {
         }
 
         await updateLastRunTime();
-        console.log('Actualización completada. Próxima actualización en 30 minutos...');
+        console.log('Actualización completada. Próxima actualización en 10 minutos...');
     } catch (err) {
         console.error('Error al actualizar las imágenes:', err);
     }
 };
-// Ejecutar la función de actualización cada 30 minutos
-setInterval(updateImagesDicom, 600000);  // Ejecutar cada 30 minutos (1800000 ms), 20 minutos (1200000 ms), 10 minutos (600000 ms) 
+
+// Ejecutar la función de actualización cada 10 minutos
+//setInterval(updateImagesDicom, 600000);
 console.log('Script iniciado. Actualizando imágenes cada 10 minutos...');
 
 export default updateImagesDicom;
