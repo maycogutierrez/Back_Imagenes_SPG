@@ -1,8 +1,8 @@
 import db from "../config/db.js";
 
-export const insertEstudio = async (dni_paciente, fecha_estudio, tipo_estudio_id, descripcion) => {
-    const query = 'INSERT INTO estudios (dni_paciente, fecha_estudio, tipo_estudio_id, descripcion,descripcion_tipo_estudio ) VALUES (?, ?, ?, ?, ?)';
-    const [result] = await db.query(query, [dni_paciente, fecha_estudio, tipo_estudio_id, descripcion]);
+export const insertEstudio = async (dni_paciente, fecha_estudio, tipo_estudio_id, part_cuerpo) => {
+    const query = 'INSERT INTO estudios (dni_paciente, fecha_estudio, tipo_estudio_id, part_cuerpo, estado ) VALUES (?, ?, ?, ?, ?)';
+    const [result] = await db.query(query, [dni_paciente, fecha_estudio, tipo_estudio_id, part_cuerpo, estado = 0]); // Estado inicial 0
     return result.insertId;
 };
 
