@@ -308,6 +308,12 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
   const tipoEstudioId =
     traducciones_modality[(datosDicom.Modality || "").toUpperCase()] || 1;
 
+  // Normalizar fecha a formato YYYY-MM-DD
+  let fechaEstudio = fecha;
+  if (/^\d{8}$/.test(fecha)) {
+    fechaEstudio = `${fecha.slice(0, 4)}-${fecha.slice(4, 6)}-${fecha.slice(6, 8)}`;
+  }
+
   // Registrar usuario si no existe
   const existingUser = await getByDni(dniPaciente);
   if (!existingUser || existingUser.length === 0) {
@@ -325,17 +331,23 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
   }
 
   // Buscar estudio existente o crear uno nuevo
-  let estudioId = await getExistingEstudio(dniPaciente, fecha, tipoEstudioId);
+  console.log("Buscando estudio existente para:", {
+    dniPaciente,
+    fechaEstudio,
+    tipoEstudioId,
+  });
+  let estudioId = await getExistingEstudio(dniPaciente, fechaEstudio, tipoEstudioId);
   if (!estudioId) {
     estudioId = await createNewEstudio(
       dniPaciente,
       tipoEstudioId,
-      fecha,
+      fechaEstudio,
       part_cuerpo
     );
     await createEmptyEstudioDetail(estudioId, dniPaciente);
+    console.log(`Estudio creado para DNI ${dniPaciente}, fecha ${fechaEstudio}, tipo ${tipoEstudioId}`);
   } else {
-    console.log(`Estudio ya existente para DNI ${dniPaciente}, fecha ${fecha}`);
+    console.log(`Estudio ya existente para DNI ${dniPaciente}, fecha ${fechaEstudio}, tipo ${tipoEstudioId}`);
   }
 
   // Registrar imágenes convertidas
