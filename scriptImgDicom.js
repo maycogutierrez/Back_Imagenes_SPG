@@ -293,16 +293,6 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
     pacienteFolderPath
   );
 
-  // Validar si el DICOM tiene imagen válida
-  if (datosDicom.NO_IMAGE) {
-    console.log(
-      `No se encontró imagen válida en los DICOM de ${path.basename(
-        patientFolderPath
-      )} en fecha ${fecha}, no se crea usuario ni estudio.`
-    );
-    return;
-  }
-
   // Traducciones y valores por defecto
   const nombreDicom = datosDicom.PatientName || "";
   const partes = nombreDicom.split("^");

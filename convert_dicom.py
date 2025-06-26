@@ -5,16 +5,10 @@ from PIL import Image, ImageOps, ImageEnhance
 import numpy as np
 import json
 
-def tiene_imagen(dicom_path):
-    try:
-        ds = pydicom.dcmread(dicom_path, stop_before_pixels=True)
-        return hasattr(ds, "PixelData")
-    except Exception:
-        return False
-
 # Función para convertir el archivo DICOM
 def convertir_dicom_a_imagen(dicom_path, output_dir):
     ds = pydicom.dcmread(dicom_path)
+    
     image_2d = ds.pixel_array.astype(float)
 
     # Escalar la imagen
@@ -29,7 +23,7 @@ def convertir_dicom_a_imagen(dicom_path, output_dir):
     
     # Aumentar el contraste
     enhancer = ImageEnhance.Contrast(im)
-    factor = 2.0
+    factor = 2.0  # Puedes probar valores entre 1.5 y 3.0 según tu preferencia
     im = enhancer.enhance(factor)
     
     # Obtener el nombre base del archivo DICOM sin extensión
@@ -76,14 +70,13 @@ for root, dirs, files in os.walk(input_dir):
     for dicom_file in files:
         if dicom_file.endswith('.dcm'):
             dicom_path = os.path.join(root, dicom_file)
-            if tiene_imagen(dicom_path):
-                convertir_dicom_a_imagen(dicom_path, folder_output_dir)
-                if not first_dicom:
-                    first_dicom = dicom_path
+            convertir_dicom_a_imagen(dicom_path, folder_output_dir)
+            if not first_dicom:
+                first_dicom = dicom_path
 
 if first_dicom:
     extraer_datos_dicom(first_dicom)
 else:
-    print(json.dumps({"NO_IMAGE": True}))  # Flag especial si no hay DICOM con imagen
+    print(json.dumps({}))  # Devuelve JSON vacío si no hay DICOM
 
 print("Conversión completada")
