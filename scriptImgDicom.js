@@ -293,6 +293,16 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
     pacienteFolderPath
   );
 
+  // Validar si el DICOM tiene imagen válida
+  if (datosDicom.NO_IMAGE) {
+    console.log(
+      `No se encontró imagen válida en los DICOM de ${path.basename(
+        patientFolderPath
+      )} en fecha ${fecha}, no se crea usuario ni estudio.`
+    );
+    return;
+  }
+
   // Traducciones y valores por defecto
   const nombreDicom = datosDicom.PatientName || "";
   const partes = nombreDicom.split("^");
@@ -341,7 +351,7 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
   // Registrar imágenes convertidas
   const convertedFiles = getImagesFromFolder(pacienteFolderPath);
   for (const jpgPath of convertedFiles) {
-    const imagePath = `http://172.16.18.167/api/${path
+    const imagePath = `https://imagenes.sanatorioprivadogatti.com.ar/api/${path
       .relative(process.cwd(), jpgPath)
       .replace(/\\/g, "/")}`;
 
