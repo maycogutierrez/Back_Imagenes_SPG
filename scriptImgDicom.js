@@ -308,12 +308,6 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
   const tipoEstudioId =
     traducciones_modality[(datosDicom.Modality || "").toUpperCase()] || 1;
 
-  // Normalizar fecha a formato YYYY-MM-DD
-  let fechaEstudio = fecha;
-  if (/^\d{8}$/.test(fecha)) {
-    fechaEstudio = `${fecha.slice(0, 4)}-${fecha.slice(4, 6)}-${fecha.slice(6, 8)}`;
-  }
-
   // Registrar usuario si no existe
   const existingUser = await getByDni(dniPaciente);
   if (!existingUser || existingUser.length === 0) {
@@ -331,23 +325,17 @@ const processImagesForPatient = async (patientFolderPath, fecha) => {
   }
 
   // Buscar estudio existente o crear uno nuevo
-  console.log("Buscando estudio existente para:", {
-    dniPaciente,
-    fechaEstudio,
-    tipoEstudioId,
-  });
-  let estudioId = await getExistingEstudio(dniPaciente, fechaEstudio, tipoEstudioId);
+  let estudioId = await getExistingEstudio(dniPaciente, fecha, tipoEstudioId);
   if (!estudioId) {
     estudioId = await createNewEstudio(
       dniPaciente,
       tipoEstudioId,
-      fechaEstudio,
+      fecha,
       part_cuerpo
     );
     await createEmptyEstudioDetail(estudioId, dniPaciente);
-    console.log(`Estudio creado para DNI ${dniPaciente}, fecha ${fechaEstudio}, tipo ${tipoEstudioId}`);
   } else {
-    console.log(`Estudio ya existente para DNI ${dniPaciente}, fecha ${fechaEstudio}, tipo ${tipoEstudioId}`);
+    console.log(`Estudio ya existente para DNI ${dniPaciente}, fecha ${fecha}`);
   }
 
   // Registrar imágenes convertidas
@@ -424,7 +412,7 @@ const updateImagesDicom = async () => {
 
     await updateLastRunTime();
     console.log(
-      "Actualización completada. Próxima actualización en 10 minutos..."
+      "Actualización completada. Próxima actualización en 1 hora..."
     );
   } catch (err) {
     console.error("Error al actualizar las imágenes:", err);
@@ -433,6 +421,6 @@ const updateImagesDicom = async () => {
 
 // Ejecutar la función de actualización cada 10 minutos
 setInterval(updateImagesDicom, 3600000 ); // 3600000 ms = 1 hora
-console.log("Script iniciado. Actualizando imágenes cada 10 minutos...");
+console.log("Script iniciado. Actualizando imágenes cada 1 hora...");
 updateImagesDicom();
 export default updateImagesDicom;
