@@ -422,5 +422,5 @@ const updateImagesDicom = async () => {
 // Ejecutar la función de actualización cada 10 minutos
 setInterval(updateImagesDicom, 3600000 ); // 3600000 ms = 1 hora
 console.log("Script iniciado. Actualizando imágenes cada 1 hora...");
-updateImagesDicom();
+
 export default updateImagesDicom;

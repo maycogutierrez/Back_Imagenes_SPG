@@ -6,7 +6,6 @@ import dotenv from "dotenv";
 import { fileURLToPath } from 'url'; 
 import userRoutes from './Routes/usersRoutes.js';
 import estudiosRoutes from './Routes/estudiosRoutes.js';
-//import updateImages from './scriptImgJpg.js';
 import updateImagesDicom from './scriptImgDicom.js';
 
 dotenv.config();
@@ -38,7 +37,6 @@ app.get("/", (req, res) => {
     res.send("Server funcionando");
 });
 
-//updateImages();
 updateImagesDicom();
 
 app.listen(port, () => {
