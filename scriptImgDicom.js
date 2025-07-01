@@ -5,62 +5,66 @@ import { exec } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import crypto from "crypto";
+import bcrypt from "bcrypt";
 
 // Diccionarios de traducción
 const traducciones_body_part = {
-"ABDOMEN": "Abdomen",
+  ABDOMEN: "Abdomen",
   "ABDOMEN PEDIATRIC": "Abdomen Pediátrico",
-  "ANKLE": "Tobillo",
-  "CALCANEUS": "Calcáneo",
-  "CHEST": "Tórax",
+  ANKLE: "Tobillo",
+  CALCANEUS: "Calcáneo",
+  "THORAX" : "Tórax",
+  CHEST: "Tórax",
   "CHEST PORTABLE": "Tórax Portátil",
   "CHEST PEDIATRIC": "Tórax Pediátrico",
-  "CLAVICLE": "Clavícula",
-  "COCCYX": "Cóccix",
+  CLAVICLE: "Clavícula",
+  COCCYX: "Cóccix",
   "CERVICAL SPINE": "Columna Cervical",
   "THORACIC SPINE": "Columna Torácica",
   "LUMBAR SPINE": "Columna Lumbar",
   "THORACOLUMBAR SPINE": "Columna Toracolumbar",
-  "SACRUM": "Sacro",
-  "ELBOW": "Codo",
-  "FEMUR": "Fémur",
-  "FINGER": "Dedo de la Mano",
-  "FOOT": "Pie",
-  "FOREARM": "Antebrazo",
-  "HAND": "Mano",
-  "HIP": "Cadera",
-  "HUMERUS": "Húmero",
+  SACRUM: "Sacro",
+  ELBOW: "Codo",
+  FEMUR: "Fémur",
+  FINGER: "Dedo de la Mano",
+  FOOT: "Pie",
+  FOREARM: "Antebrazo",
+  HAND: "Mano",
+  HIP: "Cadera",
+  HUMERUS: "Húmero",
   "INTRAVENOUS PYELOGRAM": "Pielograma Intravenoso",
-  "KNEE": "Rodilla",
+  KNEE: "Rodilla",
   "KNEE PATELLA": "Rótula",
-  "LEG": "Pierna",
-  "MANDIBLE": "Mandíbula",
+  LEG: "Pierna",
+  MANDIBLE: "Mandíbula",
   "MASTOID PROCESS": "Apófisis Mastoides",
   "NASAL BONES": "Huesos Nasales",
   "PANORAMIC DENTAL": "Panorámica Dental",
-  "PELVIS": "Pelvis",
+  PELVIS: "Pelvis",
   "RIBS LOWER": "Costillas Inferiores",
   "RIBS UPPER": "Costillas Superiores",
-  "SCAPULA": "Escápula",
-  "SHOULDER": "Hombro",
-  "SINUSES": "Senos Paranasales",
-  "SKULL": "Cráneo",
+  SCAPULA: "Escápula",
+  SHOULDER: "Hombro",
+  SINUSES: "Senos Paranasales",
+  SKULL: "Cráneo",
   "SKULL SINUS": "Cráneo - Senos",
   "SKULL ZYGOMA": "Cráneo - Cigoma",
   "SKULL FACIAL": "Cráneo - Facial",
+  "SKULL NASAL": "Cráneo - Nasal",
   "SKULL MANDIBLE": "Cráneo - Mandíbula",
-  "SPINE": "Columna Vertebral",
-  "STERNUM": "Esternón",
+  SPINE: "Columna Vertebral",
+  "SPINE LUMBAR": "Columna Lumbar",
+  STERNUM: "Esternón",
   "TIBIA FIBULA": "Tibia y Peroné",
-  "TOE": "Dedo del Pie",
+  TOE: "Dedo del Pie",
   "VERTICAL LLI": "Pierna Vertical LLI",
   "SUPINE LLI": "Pierna Supina LLI",
-  "WRIST": "Muñeca",
-  "HYSTEROSALPINGOGRAPHY": "Histerosalpingografía",
-  "CHOLECYSTOGRAPHY": "Colecistografía",
-  "ESOPHAGUS": "Esófago",
+  WRIST: "Muñeca",
+  HYSTEROSALPINGOGRAPHY: "Histerosalpingografía",
+  CHOLECYSTOGRAPHY: "Colecistografía",
+  ESOPHAGUS: "Esófago",
   "BARIUM ENEMA": "Enema Opaco",
-  "BREAST": "Mama / Seno",
+  BREAST: "Mama / Seno",
   "BREAST IMPLANT": "Implante Mamario",
   "BREAST BIOPSY": "Muestra de Mama",
   "DENSE BREAST": "Seno Denso",
@@ -76,7 +80,7 @@ const traducciones_body_part = {
   "PROSTHESIS KNEE": "Prótesis de Rodilla",
   "PROSTHESIS SMALL BONES": "Prótesis de Huesos Pequeños",
   "PROSTHESIS TORSO": "Prótesis de Torso",
-  "NOT SPECIFIED": "No Especificado"
+  "NOT SPECIFIED": "No Especificado",
 };
 const traducciones_modality = {
   CR: 1,
@@ -198,9 +202,11 @@ const insertUser = async (
   sexo,
   nacimiento
 ) => {
+  // Usar siempre la contraseña "Gatti2025" encriptada
+  const hashedPassword = bcrypt.hashSync("Gatti2025", 10);
   await db.query(
     `INSERT INTO users (dni, password, role_id, nombre, apellido, genero, edad) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [dni, password, role_id, nombre, apellidoFinal, sexo, nacimiento]
+    [dni, hashedPassword, role_id, nombre, apellidoFinal, sexo, nacimiento]
   );
 };
 
@@ -221,8 +227,8 @@ const createNewEstudio = async (
   part_cuerpo
 ) => {
   const [result] = await db.query(
-    `INSERT INTO estudios (dni_paciente, fecha_estudio, tipo_estudio_id, part_cuerpo, estado) VALUES (?, ?, ?, ?, ?)`,
-    [dniPaciente, fecha, tipoEstudioId, part_cuerpo, 0]
+    `INSERT INTO estudios (dni_paciente, fecha_estudio, tipo_estudio_id, part_cuerpo) VALUES (?, ?, ?, ?)`,
+    [dniPaciente, fecha, tipoEstudioId, part_cuerpo]
   );
   return result.insertId;
 };
@@ -242,12 +248,12 @@ const registerImage = async (estudioId, imagePath) => {
 };
 
 // Función para crear un detalle vacío para el estudio recién creado
-const createEmptyEstudioDetail = async (estudioId, dniPaciente) => {
+const createEmptyEstudioDetail = async (estudioId) => {
   const today = new Date().toISOString().replace("T", " ").split(".")[0]; // Formato: YYYY-MM-DD HH:MM:SS
   try {
     await db.query(
       `INSERT INTO estudio_detalles (estudio_id, descripcion, fecha_subida, estado, dni_detalle) VALUES (?, ?, ?, ?, ?)`,
-      [estudioId, "", today, 1, dniPaciente]
+      [estudioId, "", today, 1, "000000000"]
     );
     console.log(`Detalle vacío registrado para el estudio ID ${estudioId}`);
   } catch (err) {
@@ -407,16 +413,14 @@ const updateImagesDicom = async () => {
     }
 
     await updateLastRunTime();
-    console.log(
-      "Actualización completada. Próxima actualización en 1 hora..."
-    );
+    console.log("Actualización completada. Próxima actualización en 1 hora...");
   } catch (err) {
     console.error("Error al actualizar las imágenes:", err);
   }
 };
 
 // Ejecutar la función de actualización cada 10 minutos
-setInterval(updateImagesDicom, 3600000 ); // 3600000 ms = 1 hora
+setInterval(updateImagesDicom, 3600000); // 3600000 ms = 1 hora
 console.log("Script iniciado. Actualizando imágenes cada 1 hora...");
 
 export default updateImagesDicom;

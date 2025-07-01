@@ -1,5 +1,5 @@
 import moment from "moment";
-import { getAll, getAllRoles, getByDni, getById, insertUsers, updatePasswordByDNI, updateUserInDb } from "../Models/usersModel.js";
+import { getAll, getAllRoles, getByDni, getByDniSinPass, getById, insertUsers, updatePasswordByDNI, updateUserInDb } from "../Models/usersModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jwt-simple"
 
@@ -128,22 +128,30 @@ export const getRoles = async (req, res) => {
 
 
 export const updateUser = async (req, res) => {
+    const userId = req.params.id;
     const { dni, nombre, apellido, genero, edad, role_id } = req.body;
-    console.log(dni, nombre, apellido, genero, edad, role_id )
-    const userId = req.params.id; 
+    let firmaUrl = null;
 
-    if (!dni || !nombre || !apellido || !genero || !edad || !role_id) {
-        return res.status(400).json({ error: "Todos los campos son requeridos" });
+    // Si se subió una firma, guarda la ruta
+    if (req.file) {
+        firmaUrl = `/uploads/firmas/${req.file.filename}`;
     }
 
     try {
-        await updateUserInDb(userId, dni, nombre, apellido, genero, edad, role_id);
-        res.status(200).json({ message: "Usuario actualizado con éxito" });
+        // Actualiza el usuario, incluyendo la firma si existe
+        await updateUserInDb(userId, dni, nombre, apellido, genero, edad, role_id, firmaUrl);
+        res.status(200).json({ message: "Usuario actualizado con éxito", firma: firmaUrl });
     } catch (error) {
         res.status(500).json({ error: "Error al actualizar el usuario" });
     }
 };
 
+
+export const usuarioPorDNI = async (req, res) => {
+    const { dni } = req.params;
+    const users = await getByDniSinPass(dni);
+    res.status(200).json({ users: users });
+};
 
 export const usuarioPorId = async (req, res) => {
     const { id } = req.params;
