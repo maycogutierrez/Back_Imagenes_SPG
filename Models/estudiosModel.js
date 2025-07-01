@@ -46,30 +46,30 @@ export const getAllEstudiosConDescripcionPorDni = async (dni) => {
 
 export const getEstudioDetalles = async (estudio_id) => {
     const query = `SELECT 
-    ed.estudio_id, 
-    ed.descripcion, 
-    ed.fecha_subida, 
-    ed.estado,
-    ed., 
-    GROUP_CONCAT(ie.id, '|', ie.imagen_url SEPARATOR ',') AS imagenes 
+        ed.estudio_id, 
+        ed.descripcion, 
+        ed.fecha_subida, 
+        ed.estado,
+        ed.dni_detalle,
+        GROUP_CONCAT(ie.id, '|', ie.imagen_url SEPARATOR ',') AS imagenes 
     FROM estudio_detalles ed 
     LEFT JOIN imagenes_estudios ie 
-    ON ed.estudio_id = ie.estudio_id 
+        ON ed.estudio_id = ie.estudio_id 
     WHERE ed.estudio_id = ? AND ed.estado = 1
     GROUP BY ed.estudio_id, ed.descripcion, ed.fecha_subida, ed.estado, ed.dni_detalle
-`;  
+    `;
     const [rows] = await db.query(query, [estudio_id]);
-    const detalle = rows.map(row =>({
+    const detalle = rows.map(row => ({
         estudio_id: row.estudio_id,
         descripcion: row.descripcion,
         fecha_subida: row.fecha_subida,
         estado: row.estado,
         dni_detalle: row.dni_detalle,
-        imagenes: row.imagenes ? row.imagenes.split(',').map(img =>{
+        imagenes: row.imagenes ? row.imagenes.split(',').map(img => {
             const [id, url] = img.split('|');
-            return{id:parseInt(id, 10), imagen_url: url};
-        } ):[]
-    }))
+            return { id: parseInt(id, 10), imagen_url: url };
+        }) : []
+    }));
     return detalle;
 };
 

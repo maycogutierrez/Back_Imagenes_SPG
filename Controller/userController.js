@@ -2,6 +2,8 @@ import moment from "moment";
 import { getAll, getAllRoles, getByDni, getByDniSinPass, getById, insertUsers, updatePasswordByDNI, updateUserInDb } from "../Models/usersModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jwt-simple"
+import fs from "fs";
+import path from "path";
 
 const createToken = (user) => {
     let payload = {
@@ -132,13 +134,30 @@ export const updateUser = async (req, res) => {
     const { dni, nombre, apellido, genero, edad, role_id } = req.body;
     let firmaUrl = null;
 
-    // Si se subió una firma, guarda la ruta
+    // 1. Buscar la firma anterior
+    let oldUser = await getById(userId);
+    let oldFirma = oldUser && oldUser.firma ? oldUser.firma : null;
+
+    // 2. Si se subió una firma, guarda la ruta
     if (req.file) {
-        firmaUrl = `/uploads/firmas/${req.file.filename}`;
+        firmaUrl = `https://imagenes.sanatorioprivadogatti.com.ar/api/uploads/firmas/${req.file.filename}`;
+
+        // 3. Borrar la firma anterior si existe y no es null
+        if (oldFirma) {
+            // Extraer el nombre de archivo de la URL anterior
+            const filename = oldFirma.split('/').pop();
+            const filePath = path.join("uploads", "firmas", filename);
+            fs.unlink(filePath, (err) => {
+                if (err) {
+                    console.log("No se pudo borrar la firma anterior:", err.message);
+                } else {
+                    console.log("Firma anterior borrada:", filePath);
+                }
+            });
+        }
     }
 
     try {
-        // Actualiza el usuario, incluyendo la firma si existe
         await updateUserInDb(userId, dni, nombre, apellido, genero, edad, role_id, firmaUrl);
         res.status(200).json({ message: "Usuario actualizado con éxito", firma: firmaUrl });
     } catch (error) {

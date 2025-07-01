@@ -29,7 +29,7 @@ export const getByDni = async (pDni) => {
 
 export const getByDniSinPass = async (pDni) => {
   const query =
-    "SELECT id, dni, nombre, apellido, genero, edad, role_id FROM users WHERE dni = ?";
+    "SELECT id, dni, nombre, apellido, genero, edad, role_id, firma FROM users WHERE dni = ?";
   const [rows] = await db.query(query, [pDni]);
   return rows;
 };

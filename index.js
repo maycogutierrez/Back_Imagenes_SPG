@@ -25,10 +25,8 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'user_token'],
 }));
 
-
-
-
 app.use('/api/imgs', express.static(path.join(__dirname, 'imgs')));
+app.use('/api/uploads/firmas', express.static(path.join(__dirname, 'uploads/firmas')));
 
 app.use('/api/users', userRoutes);
 app.use('/api/estudios', estudiosRoutes);
