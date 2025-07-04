@@ -23,9 +23,6 @@ export const todosLosUsuarios = async (req, res) => {
 export const registerUser = async (req, res) => {
     const { dni, password, nombre, apellido, genero, edad,role_id } = req.body;
 
-    console.log("Received data:", { dni, password, nombre, apellido, genero, edad,role_id });
-
-
     if (!dni || !password || !nombre || !apellido || !genero || !edad || !role_id) {
         return res.status(400).json({
             error: "Todos los campos son requeridos"
@@ -100,10 +97,8 @@ export const checkToken = (req, res, next) => {
     let payload;
     try {
         payload = jwt.decode(token, process.env.TOKEN_KEY);
-        console.log('Payload:', payload);
 
     } catch (err) {
-        console.log('Payload:', payload);
         return res.status(401).json({
             error: 'Token inválido'
         });
@@ -114,7 +109,6 @@ export const checkToken = (req, res, next) => {
     }
 
     req.userId = payload.userId;
-    console.log('Payload:', payload);
 
     next();
 };
@@ -182,8 +176,6 @@ export const usuarioPorId = async (req, res) => {
 
 export const changePassword = async (req, res) => {
     const { dni, newPassword } = req.body;
-    console.log(dni, newPassword)
-
     try {
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         await updatePasswordByDNI(dni, hashedPassword);

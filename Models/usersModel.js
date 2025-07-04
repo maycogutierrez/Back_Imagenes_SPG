@@ -3,7 +3,6 @@ import db from "../config/db.js";
 export const getAll = async () => {
   const query = "SELECT * FROM users ORDER BY nombre ASC, apellido ASC";
   const [rows] = await db.query(query);
-  console.log(rows);
   return rows;
 };
 

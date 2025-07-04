@@ -39,12 +39,10 @@ export const agregarEstudioDetalle = async (req, res) => {
 export const obtenerEstudios = async (req, res) => {
   try {
     const { dni } = req.body;
-    console.log(req.body);
     if (!dni) {
       return res.status(400).json({ error: "DNI es requerido" });
     }
     const estudios = await getAllEstudiosConDescripcionPorDni(dni);
-    console.log(estudios);
     if (!estudios || estudios.length === 0) {
       return res
         .status(404)
@@ -60,11 +58,9 @@ export const obtenerEstudios = async (req, res) => {
 };
 
 export const obtenerDetallesDeEstudio = async (req, res) => {
-  console.log(req.body);
   const { estudioId } = req.body;
   if (estudioId) {
     const detalles = await getEstudioDetalles(estudioId);
-    console.log(detalles);
     res.status(200).json({ detalles });
   } else {
     res.status(500).json({ error: "Error al obtener detalles del estudio" });
@@ -92,7 +88,6 @@ export const updateDetalleEstudio = async (req, res) => {
 
 export const actualizarDescripcion = async (req, res) => {
   const { estudio_id, descripcion_vieja, descripcion_nueva, dni } = req.body;
-  console.log(req.body);
 
   try {
     // 1. Marcar la descripción vieja como inactiva
@@ -110,8 +105,7 @@ export const actualizarDescripcion = async (req, res) => {
 
 export const actualizarEstudio = async (req, res) => {
   const { estudio_id, tipo_estudio_id, estado } = req.body;
-  console.log(estudio_id, tipo_estudio_id, estado);
-
+  
   try {
     const rowsAffected = await updateEstudio(
       estudio_id,
@@ -138,7 +132,6 @@ export const actualizarEstudio = async (req, res) => {
 
 export const agregarTipoEstudio = async (req, res) => {
   const { nombreTipo } = req.body;
-  console.log(req.body);
   try {
     await agregarTipoDeEstudio(nombreTipo);
     res.status(200).json({ message: "Tipo de Estudio agregado con éxito" });

@@ -1,82 +1,146 @@
 import os
 import sys
 import pydicom
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image, ImageEnhance
 import numpy as np
 import json
 
 # Función para convertir el archivo DICOM
 def convertir_dicom_a_imagen(dicom_path, output_dir):
-    ds = pydicom.dcmread(dicom_path)
-    
-    image_2d = ds.pixel_array.astype(float)
+    try:
+        ds = pydicom.dcmread(dicom_path)
+        if 'PixelData' not in ds:
+            return # No es un archivo de imagen, ignorar
 
-    # Escalar la imagen
-    image_2d_scaled = (np.maximum(image_2d, 0) / image_2d.max()) * 255.0
-    image_2d_scaled = np.uint8(image_2d_scaled)
-    
-    # Convertir a imagen
-    im = Image.fromarray(image_2d_scaled).convert('L')
-    
-    # Invertir la imagen (fondo negro, cuerpo blanco)
-    im = ImageOps.invert(im)
-    
-    # Aumentar el contraste
-    enhancer = ImageEnhance.Contrast(im)
-    factor = 2.0  # Puedes probar valores entre 1.5 y 3.0 según tu preferencia
-    im = enhancer.enhance(factor)
-    
-    # Obtener el nombre base del archivo DICOM sin extensión
-    base_name = os.path.splitext(os.path.basename(dicom_path))[0]
-    
-    # Guardar la imagen con el mismo nombre pero con extensión .jpg
-    im.save(os.path.join(output_dir, f"{base_name}.jpg"))
+        image_2d = ds.pixel_array.astype(float)
+
+        # Windowing
+        wc = float(ds.get("WindowCenter", image_2d.mean()))
+        ww = float(ds.get("WindowWidth", image_2d.max() - image_2d.min()))
+        img_min = wc - ww / 2
+        img_max = wc + ww / 2
+        image_2d = np.clip(image_2d, img_min, img_max)
+
+        # Normalización usando percentiles
+        p_low, p_high = np.percentile(image_2d, (1, 99))
+        image_2d = np.clip(image_2d, p_low, p_high)
+        image_2d_scaled = (image_2d - p_low) / (p_high - p_low) * 255.0
+        image_2d_scaled = np.uint8(image_2d_scaled)
+
+        # Convertir a imagen en escala de grises
+        im = Image.fromarray(image_2d_scaled).convert('L')
+
+        # Ajuste de contraste más suave
+        enhancer = ImageEnhance.Contrast(im)
+        im = enhancer.enhance(0.85)
+
+        # Ajuste de brillo más suave
+        enhancer_brightness = ImageEnhance.Brightness(im)
+        im = enhancer_brightness.enhance(0.8)
+
+        # Guardar la imagen convertida
+        base_name = os.path.splitext(os.path.basename(dicom_path))[0]
+        im.save(os.path.join(output_dir, f"{base_name}.jpg"))
+    except Exception as e:
+        # Ignorar archivos que no se pueden procesar como imagen
+        pass
 
 def extraer_datos_dicom(dicom_path):
-    ds = pydicom.dcmread(dicom_path, stop_before_pixels=True)
-    datos = {
-        "PatientID": str(ds.get("PatientID", "")),
-        "PatientName": str(ds.get("PatientName", "")),
-        "PatientSex": str(ds.get("PatientSex", "")),
-        "PatientBirthDate": str(ds.get("PatientBirthDate", "")),
-        "BodyPartExamined": str(ds.get("BodyPartExamined", "")),
-        "Modality": str(ds.get("Modality", "")),
-        "StudyDate": str(ds.get("StudyDate", "")),
-        "StudyDescription": str(ds.get("StudyDescription", "")),
-        "SeriesDescription": str(ds.get("SeriesDescription", "")),
-        "ProtocolName": str(ds.get("ProtocolName", "")),
-    }
-    print(json.dumps(datos))
+    try:
+        ds = pydicom.dcmread(dicom_path, stop_before_pixels=True)
+        # Devuelve el diccionario de datos. Si falta PatientID, estará vacío.
+        return {
+            "PatientID": str(ds.get("PatientID", "")),
+            "PatientName": str(ds.get("PatientName", "")),
+            "PatientSex": str(ds.get("PatientSex", "")),
+            "PatientBirthDate": str(ds.get("PatientBirthDate", "")),
+            "BodyPartExamined": str(ds.get("BodyPartExamined", "")),
+            "StudyDate": str(ds.get("StudyDate", "")),
+            "ProtocolName": str(ds.get("ProtocolName", "")),
+            "Modality": str(ds.get("Modality", "")),
+            "StudyInstanceUID": str(ds.get("StudyInstanceUID", "")),
+        }
+    except Exception:
+        # Si hay un error leyendo el archivo (corrupto, etc.), devolver diccionario vacío
+        return {}
 
-# Obtener las carpetas de entrada y salida desde los argumentos
-if len(sys.argv) < 3:
-    print("Uso: python convert_dicom.py <input_dir> <output_dir>")
-    sys.exit(1)
+def parse_patient_txt(filepath):
+    datos = {}
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                if '=' in line:
+                    key, value = line.strip().split('=', 1)
+                    if key == 'PatientID':
+                        datos['PatientID'] = value
+                    elif key == 'PatientName':
+                        datos['PatientName'] = value
+                    elif key == 'PatientSex':
+                        datos['PatientSex'] = value
+    except FileNotFoundError:
+        return {}
+    return datos
 
-input_dir = sys.argv[1]  # Carpeta de entrada
-output_dir = sys.argv[2]  # Carpeta de salida
+def main(input_dir, output_dir):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-os.makedirs(output_dir, exist_ok=True)
+    archivos_dicom = sorted([os.path.join(input_dir, f) for f in os.listdir(input_dir) if f.lower().endswith('.dcm')])
+    
+    datos_finales = {}
+    
+    # Prioridad 1: Intentar obtener datos de archivos DICOM
+    if archivos_dicom:
+        for dicom_path in archivos_dicom:
+            datos = extraer_datos_dicom(dicom_path)
+            if datos.get("PatientID"):
+                datos_finales = datos
+                break 
+    
+    # Si no se encontró DNI en los DICOM, probar fallbacks
+    if not datos_finales.get("PatientID"):
+        # Prioridad 2: Intentar con PATIENT.txt
+        patient_txt_path = os.path.join(input_dir, 'PATIENT.txt')
+        if os.path.exists(patient_txt_path):
+            datos_txt = parse_patient_txt(patient_txt_path)
+            if datos_txt.get('PatientID'):
+                datos_finales = datos_txt
+        
+        # Prioridad 3: Intentar con el nombre de la carpeta
+        if not datos_finales.get("PatientID"):
+            folder_name = os.path.basename(input_dir)
+            if '_' in folder_name:
+                patient_id = folder_name.split('_')[-1]
+            else:
+                numeric_part = ''.join(filter(str.isdigit, folder_name))
+                if numeric_part:
+                    patient_id = numeric_part
+            if patient_id:
+                datos_finales['PatientID'] = patient_id
 
-first_dicom = None
-# Recorrer todas las carpetas y subcarpetas dentro del directorio de entrada
-for root, dirs, files in os.walk(input_dir):
-    # Crear una subcarpeta correspondiente en el directorio de salida
-    relative_path = os.path.relpath(root, input_dir)
-    folder_output_dir = os.path.join(output_dir, relative_path)
-    os.makedirs(folder_output_dir, exist_ok=True)
+    # Asegurar que todas las claves esperadas por Node.js existan, aunque estén vacías
+    keys_to_ensure = [
+        "PatientID", "PatientName", "PatientSex", "PatientBirthDate", 
+        "BodyPartExamined", "StudyDate", "ProtocolName", "Modality", "StudyInstanceUID"
+    ]
+    for key in keys_to_ensure:
+        datos_finales.setdefault(key, "")
 
-    # Buscar y procesar los archivos DICOM dentro de la carpeta actual
-    for dicom_file in files:
-        if dicom_file.endswith('.dcm'):
-            dicom_path = os.path.join(root, dicom_file)
-            convertir_dicom_a_imagen(dicom_path, folder_output_dir)
-            if not first_dicom:
-                first_dicom = dicom_path
+    # Imprimir el JSON final para Node.js
+    print(json.dumps(datos_finales))
 
-if first_dicom:
-    extraer_datos_dicom(first_dicom)
-else:
-    print(json.dumps({}))  # Devuelve JSON vacío si no hay DICOM
+    # Convertir todas las imágenes DICOM a JPG, si existen
+    if archivos_dicom:
+        for dicom_path in archivos_dicom:
+            convertir_dicom_a_imagen(dicom_path, output_dir)
 
-print("Conversión completada")
+    print("Proceso de Python completado.", file=sys.stderr)
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("Uso: python convert_dicom.py <input_dir> <output_dir>", file=sys.stderr)
+        sys.exit(1)
+
+    input_dir = sys.argv[1]
+    output_dir = sys.argv[2]
+    main(input_dir, output_dir)

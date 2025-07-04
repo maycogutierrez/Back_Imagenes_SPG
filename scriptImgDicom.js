@@ -4,16 +4,16 @@ import db from "./config/db.js";
 import { exec } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import crypto from "crypto";
 import bcrypt from "bcrypt";
 
-// Diccionarios de traducción
+
+// --- Diccionarios de Traducción ---
 const traducciones_body_part = {
   ABDOMEN: "Abdomen",
   "ABDOMEN PEDIATRIC": "Abdomen Pediátrico",
   ANKLE: "Tobillo",
   CALCANEUS: "Calcáneo",
-  "THORAX" : "Tórax",
+  THORAX: "Tórax",
   CHEST: "Tórax",
   "CHEST PORTABLE": "Tórax Portátil",
   "CHEST PEDIATRIC": "Tórax Pediátrico",
@@ -102,325 +102,335 @@ const traducciones_sexo = {
   "": "",
 };
 
-// Obtener el directorio actual con import.meta.url
+// --- Configuración ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// Ruta al script de Python
 const pythonScriptPath = join(__dirname, "./convert_dicom.py");
+// IMPORTANTE: Asegúrate de que esta ruta sea la correcta para tu sistema.
 //const imagesFolder = path.join(process.cwd(), "images");
-const imagesFolder = "/home/gatti/images"; // Carpeta de imágenes
-const outputFolder = "imgs"; // Carpeta de imágenes convertidas
+const imagesFolder = "/home/gatti/imagesExport";
+const outputFolder = "imgs";
 
-// Función para ejecutar el script de Python y extraer datos DICOM
+// --- Funciones de Ayuda ---
+const capitalizar = (str) => {
+  if (!str) return "";
+  return str.toLowerCase().replace(/(^|\s)\S/g, (l) => l.toUpperCase());
+};
+
+const formatStudyDate = (dateStr) => {
+  if (!dateStr || dateStr.length !== 8) return dateStr;
+  return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+};
+
+const getImagesFromFolder = (folderPath) => {
+  let imageFiles = [];
+  const allowedExtensions = [".jpg", ".jpeg", ".png"];
+  try {
+    const items = fs.readdirSync(folderPath);
+    for (const item of items) {
+      const itemPath = path.join(folderPath, item);
+      const stat = fs.statSync(itemPath);
+      if (stat.isDirectory()) {
+        imageFiles = imageFiles.concat(getImagesFromFolder(itemPath));
+      } else if (allowedExtensions.includes(path.extname(item).toLowerCase())) {
+        imageFiles.push(itemPath);
+      }
+    }
+  } catch (error) {
+    console.error(`Error leyendo imágenes de ${folderPath}:`, error);
+  }
+  return imageFiles;
+};
+
 const runPythonScript = (inputDir, outputDir) => {
   return new Promise((resolve, reject) => {
+    // Usar 'py' en lugar de 'python' para mayor compatibilidad en Windows.
     const command = `python3 "${pythonScriptPath}" "${inputDir}" "${outputDir}"`;
+
+    // Log para depuración: muestra el comando que se va a ejecutar.
+    console.log(`Ejecutando comando: ${command}`);
+
     exec(command, (error, stdout, stderr) => {
-      if (error)
-        return reject(
-          `Error al ejecutar el script de Python: ${error.message}`
-        );
+      // Si hay un error en la ejecución del script (ej: no encontrado, error de sintaxis)
+      if (error) {
+        console.error(`Error al ejecutar el script de Python: ${error.message}`);
+        // stderr puede contener información valiosa sobre el error.
+        if (stderr) {
+          console.error(`Stderr: ${stderr}`);
+        }
+        return reject(`Error ejecutando el script de Python: ${error.message}`);
+      }
+
+      // Si el script se ejecuta pero devuelve un error (ej: carpeta no encontrada)
+      if (stderr) {
+        console.warn(`Advertencia (stderr) del script de Python: ${stderr}`);
+      }
+
       let datosDicom = {};
       try {
         const lines = stdout.trim().split("\n");
         for (let i = lines.length - 1; i >= 0; i--) {
           try {
-            datosDicom = JSON.parse(lines[i]);
-            break;
-          } catch {}
+            // Intentar parsear cada línea como JSON.
+            const parsedLine = JSON.parse(lines[i]);
+            // Asumimos que la última línea JSON válida contiene los datos.
+            datosDicom = parsedLine;
+            break; // Salir del bucle una vez que se encuentra un JSON válido.
+          } catch (e) {
+            // Ignorar líneas que no son JSON válido, es esperado.
+          }
         }
+
+        if (Object.keys(datosDicom).length === 0) {
+          console.log(
+            "No se pudo extraer datos DICOM. La salida del script de Python puede estar vacía o no ser un JSON válido."
+          );
+          console.log("Salida (stdout):", stdout);
+        }
+
+        resolve(datosDicom);
       } catch (e) {
-        console.error("No se pudo parsear la salida JSON del script de Python");
+        console.error(
+          "Error al parsear la salida JSON del script de Python:",
+          e.message
+        );
+        console.error("Salida recibida (stdout):", stdout);
+        reject(`Error parseando la salida del script de Python: ${e.message}`);
       }
-      resolve(datosDicom);
     });
   });
 };
 
-// Función para obtener sólo archivos DICOM (.dcm) en una carpeta y subcarpetas
-const getDicomFilesFromFolder = (folderPath) => {
-  let dicomFiles = [];
-  const items = fs.readdirSync(folderPath);
-  items.forEach((item) => {
-    const itemPath = path.join(folderPath, item);
-    const stats = fs.statSync(itemPath);
-    if (stats.isDirectory()) {
-      dicomFiles = dicomFiles.concat(getDicomFilesFromFolder(itemPath));
-    } else if (stats.isFile() && item.toLowerCase().endsWith(".dcm")) {
-      dicomFiles.push(itemPath);
-    }
-  });
-  return dicomFiles;
-};
-
-// Función para obtener las imágenes de las carpetas (solo extensiones comunes y DICOM)
-const getImagesFromFolder = (folderPath) => {
-  let files = [];
-  const items = fs.readdirSync(folderPath);
-
-  items.forEach((item) => {
-    const itemPath = path.join(folderPath, item);
-    const stats = fs.statSync(itemPath);
-
-    if (stats.isDirectory()) {
-      files = files.concat(getImagesFromFolder(itemPath)); // Obtener imágenes de subdirectorios
-    } else if (
-      stats.isFile() &&
-      item.match(/\.(dcm|dicom|jpg|jpeg|png|gif|bmp)$/i)
-    ) {
-      // Buscar archivos DICOM o convertidos
-      files.push(itemPath);
-    }
-  });
-
-  return files;
-};
-
-// Función para extraer el DNI del paciente desde el nombre de la subcarpeta
-const extractEstudioIdFromPath = (folderPath) => {
-  let dirName = path.basename(folderPath); // Extrae el DNI de la subcarpeta
-  // Elimina puntos y espacios en blanco
-  dirName = dirName.replace(/[.\s]/g, "");
-  console.log(`DNI extraído del path: ${dirName}`);
-  return dirName;
-};
-
+// --- Funciones de Base de Datos ---
 const getByDni = async (dni) => {
   const [rows] = await db.query("SELECT * FROM users WHERE dni = ?", [dni]);
   return rows;
 };
 
-// Ahora el usuario se crea con más datos si están disponibles
-
-const insertUser = async (
-  dni,
-  password,
-  role_id,
-  apellidoFinal,
-  nombre,
-  sexo,
-  nacimiento
-) => {
-  // Usar siempre la contraseña "Gatti2025" encriptada
-  const hashedPassword = bcrypt.hashSync("Gatti2025", 10);
-  await db.query(
-    `INSERT INTO users (dni, password, role_id, nombre, apellido, genero, edad) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [dni, hashedPassword, role_id, nombre, apellidoFinal, sexo, nacimiento]
+const insertUser = async (dni, role_id, apellido, nombre, genero, edad) => {
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(dni.toString(), salt);
+  const [result] = await db.query(
+    "INSERT INTO users (dni, password, nombre, apellido, genero, edad, role_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [dni, hashedPassword, nombre, apellido, genero, edad, role_id]
   );
+  return result.insertId;
 };
 
-// Nueva función para verificar si ya existe un estudio para DNI + fecha + tipo
-const getExistingEstudio = async (dniPaciente, fecha, tipoEstudioId) => {
+const getExistingEstudio = async (studyInstanceUID) => {
+  if (!studyInstanceUID) return null;
   const [rows] = await db.query(
-    `SELECT id FROM estudios WHERE dni_paciente = ? AND fecha_estudio = ? AND tipo_estudio_id = ? LIMIT 1`,
-    [dniPaciente, fecha, tipoEstudioId]
+    "SELECT id FROM estudios WHERE study_instance_uid = ?",
+    [studyInstanceUID]
   );
   return rows.length > 0 ? rows[0].id : null;
 };
 
-// Ahora el estudio se crea con más datos si están disponibles
 const createNewEstudio = async (
   dniPaciente,
   tipoEstudioId,
   fecha,
-  part_cuerpo
+  part_cuerpo,
+  studyInstanceUID
 ) => {
   const [result] = await db.query(
-    `INSERT INTO estudios (dni_paciente, fecha_estudio, tipo_estudio_id, part_cuerpo) VALUES (?, ?, ?, ?)`,
-    [dniPaciente, fecha, tipoEstudioId, part_cuerpo]
+    "INSERT INTO estudios (dni_paciente, fecha_estudio, tipo_estudio_id, part_cuerpo, study_instance_uid) VALUES (?, ?, ?, ?, ?)",
+    [dniPaciente, fecha, tipoEstudioId, part_cuerpo, studyInstanceUID]
   );
   return result.insertId;
 };
 
 const registerImage = async (estudioId, imagePath) => {
-  try {
-    await db.query(
-      `INSERT INTO imagenes_estudios (estudio_id, imagen_url) VALUES (?, ?)`,
-      [estudioId, imagePath]
-    );
-  } catch (err) {
-    console.error(
-      `Error al registrar la imagen para el estudio ${estudioId}:`,
-      err.message
-    );
-  }
+  await db.query(
+    "INSERT INTO imagenes_estudios (estudio_id, imagen_url) VALUES (?, ?)",
+    [estudioId, imagePath]
+  );
 };
 
-// Función para crear un detalle vacío para el estudio recién creado
 const createEmptyEstudioDetail = async (estudioId) => {
-  const today = new Date().toISOString().replace("T", " ").split(".")[0]; // Formato: YYYY-MM-DD HH:MM:SS
+  const today = new Date().toISOString().slice(0, 19).replace('T', ' ');
   try {
     await db.query(
-      `INSERT INTO estudio_detalles (estudio_id, descripcion, fecha_subida, estado, dni_detalle) VALUES (?, ?, ?, ?, ?)`,
-      [estudioId, "", today, 1, "000000000"]
+      "INSERT INTO estudio_detalles (estudio_id, descripcion, fecha_subida, estado, dni_detalle) VALUES (?, ?, ?, ?, ?)",
+      [estudioId, "", today, 1, 0]
     );
     console.log(`Detalle vacío registrado para el estudio ID ${estudioId}`);
   } catch (err) {
-    console.error(
-      `Error al crear detalle vacío para el estudio ${estudioId}:`,
-      err.message
-    );
-  }
-};
-function capitalizar(str) {
-  return str.toLowerCase().replace(/(^|\s)\S/g, (l) => l.toUpperCase());
-}
-
-// Función para procesar las imágenes de un paciente
-const processImagesForPatient = async (patientFolderPath, fecha) => {
-  // Buscamos solo archivos DICOM para validar existencia
-  const dicomFiles = getDicomFilesFromFolder(patientFolderPath);
-
-  if (dicomFiles.length === 0) {
-    console.log(
-      `No se encontraron archivos DICOM para el paciente ${path.basename(
-        patientFolderPath
-      )} en fecha ${fecha}, no se crea estudio.`
-    );
-    return; // Salimos sin crear estudio ni registrar imágenes ni usuario
-  }
-
-  // Limpiar DNI
-  const dniPaciente = extractEstudioIdFromPath(patientFolderPath);
-  const fechaFolderPath = path.join(outputFolder, fecha);
-  const pacienteFolderPath = path.join(fechaFolderPath, dniPaciente);
-  if (!fs.existsSync(pacienteFolderPath)) {
-    fs.mkdirSync(pacienteFolderPath, { recursive: true });
-  }
-
-  // Ejecutar el script de Python y obtener los datos DICOM
-  const datosDicom = await runPythonScript(
-    patientFolderPath,
-    pacienteFolderPath
-  );
-
-  // Traducciones y valores por defecto
-  const nombreDicom = datosDicom.PatientName || "";
-  const partes = nombreDicom.split("^");
-  const apellidoFinal = capitalizar(partes[0] || "");
-  const nombresFinal = capitalizar(partes.slice(1).filter(Boolean).join(" "));
-  const sexo =
-    traducciones_sexo[(datosDicom.PatientSex || "").toUpperCase()] || "";
-  const nacimiento = datosDicom.PatientBirthDate || null;
-  const part_cuerpo =
-    traducciones_body_part[(datosDicom.BodyPartExamined || "").toUpperCase()] ||
-    datosDicom.BodyPartExamined ||
-    "";
-  const tipoEstudioId =
-    traducciones_modality[(datosDicom.Modality || "").toUpperCase()] || 1;
-
-  // Registrar usuario si no existe
-  const existingUser = await getByDni(dniPaciente);
-  if (!existingUser || existingUser.length === 0) {
-    const randomPassword = crypto.randomBytes(8).toString("hex");
-    await insertUser(
-      dniPaciente,
-      randomPassword,
-      3,
-      apellidoFinal,
-      nombresFinal,
-      sexo,
-      nacimiento
-    );
-    console.log(`Usuario creado automáticamente para DNI: ${dniPaciente}`);
-  }
-
-  // Buscar estudio existente o crear uno nuevo
-  let estudioId = await getExistingEstudio(dniPaciente, fecha, tipoEstudioId);
-  if (!estudioId) {
-    estudioId = await createNewEstudio(
-      dniPaciente,
-      tipoEstudioId,
-      fecha,
-      part_cuerpo
-    );
-    await createEmptyEstudioDetail(estudioId, dniPaciente);
-  } else {
-    console.log(`Estudio ya existente para DNI ${dniPaciente}, fecha ${fecha}`);
-  }
-
-  // Registrar imágenes convertidas
-  const convertedFiles = getImagesFromFolder(pacienteFolderPath);
-  for (const jpgPath of convertedFiles) {
-    const imagePath = `https://imagenes.sanatorioprivadogatti.com.ar/api/${path
-      .relative(process.cwd(), jpgPath)
-      .replace(/\\/g, "/")}`;
-
-    // Verificar si la imagen ya está registrada
-    const [exists] = await db.query(
-      "SELECT 1 FROM imagenes_estudios WHERE estudio_id = ? AND imagen_url = ? LIMIT 1",
-      [estudioId, imagePath]
-    );
-
-    if (exists.length === 0) {
-      await registerImage(estudioId, imagePath);
-      console.log(
-        `Registrando imagen: ${jpgPath} para el estudio ${estudioId}`
-      );
-    } else {
-      console.log(`Imagen ya registrada: ${imagePath}`);
-    }
+    console.error(`Error al crear detalle vacío para el estudio ${estudioId}:`, err.message);
   }
 };
 
-// Función para obtener el último tiempo de ejecución
-const getLastRunTime = async () => {
-  const [rows] = await db.query(
-    'SELECT value FROM config WHERE id = "last_run_time"'
-  );
-  return rows.length > 0 ? new Date(rows[0].value) : new Date(0);
-};
-
-// Función para actualizar el tiempo de la última ejecución
-const updateLastRunTime = async () => {
-  await db.query(`UPDATE config SET value = ? WHERE id = 'last_run_time'`, [
-    new Date(),
-  ]);
-};
-
-// Función para actualizar las imágenes
-const updateImagesDicom = async () => {
+// --- Funciones Principales de Procesamiento ---
+const processImagesForPatient = async (patientFolderPath) => {
   try {
-    const lastRunTime = await getLastRunTime();
-    const directories = fs
-      .readdirSync(imagesFolder)
-      .filter((item) =>
-        fs.statSync(path.join(imagesFolder, item)).isDirectory()
+    // 1. Define a temporary output path based on the input folder.
+    const patientFolder = path.basename(patientFolderPath);
+    const tempOutputPatientPath = path.join(
+      process.cwd(),
+      outputFolder,
+      `temp_${path.basename(path.dirname(patientFolderPath))}_${patientFolder}`
+    );
+
+    // 2. Run Python script to convert images to the temp path and get metadata.
+    const datosDicom = await runPythonScript(patientFolderPath, tempOutputPatientPath);
+
+    if (!datosDicom || Object.keys(datosDicom).length === 0) {
+      console.error(`No se pudo extraer datos DICOM para ${patientFolderPath}.`);
+      if (fs.existsSync(tempOutputPatientPath)) fs.rmSync(tempOutputPatientPath, { recursive: true, force: true });
+      return;
+    }
+
+    const studyInstanceUID = datosDicom.StudyInstanceUID;
+    if (!studyInstanceUID) {
+      console.error(`StudyInstanceUID no encontrado para ${patientFolderPath}. Se omite el estudio.`);
+      if (fs.existsSync(tempOutputPatientPath)) fs.rmSync(tempOutputPatientPath, { recursive: true, force: true });
+      return;
+    }
+
+    // 3. Define the final, canonical output path based on the StudyInstanceUID.
+    const finalOutputPatientPath = path.join(process.cwd(), outputFolder, studyInstanceUID);
+    if (!fs.existsSync(finalOutputPatientPath)) {
+      fs.mkdirSync(finalOutputPatientPath, { recursive: true });
+    }
+
+    // 4. Move converted images from the temporary path to the final canonical path.
+    if (fs.existsSync(tempOutputPatientPath)) {
+        const tempFiles = fs.readdirSync(tempOutputPatientPath);
+        for (const file of tempFiles) {
+            const oldPath = path.join(tempOutputPatientPath, file);
+            const newPath = path.join(finalOutputPatientPath, file);
+            if (!fs.existsSync(newPath)) {
+                fs.renameSync(oldPath, newPath);
+            }
+        }
+        fs.rmSync(tempOutputPatientPath, { recursive: true, force: true });
+    }
+
+    const dniPaciente = datosDicom.PatientID;
+    if (!dniPaciente) {
+      console.log(`No se pudo obtener el DNI para ${patientFolderPath}, se omite.`);
+      return;
+    }
+
+    let user = await getByDni(dniPaciente);
+    if (!user) {
+      const nombreCapitalizado = capitalizar((datosDicom.PatientName || "").split(",")[0]);
+      const apellidoCapitalizado = capitalizar((datosDicom.PatientName || "").split(",")[1] || "");
+      const sexoTraducido = traducciones_sexo[datosDicom.PatientSex] || "No especificado";
+      await insertUser(dniPaciente, 1, apellidoCapitalizado, nombreCapitalizado, sexoTraducido, datosDicom.PatientBirthDate);
+      console.log(`Nuevo usuario creado para DNI: ${dniPaciente}`);
+    }
+
+    const part_cuerpo = traducciones_body_part[datosDicom.BodyPartExamined.toUpperCase()] || capitalizar(datosDicom.BodyPartExamined) || "No Especificado";
+    const tipoEstudioId = traducciones_modality[datosDicom.Modality.toUpperCase()] || 11;
+    const fechaEstudioReal = formatStudyDate(datosDicom.StudyDate);
+
+    // 5. Find or create the study record in the database.
+    let estudioId = await getExistingEstudio(studyInstanceUID);
+    if (!estudioId) {
+      estudioId = await createNewEstudio(dniPaciente, tipoEstudioId, fechaEstudioReal, part_cuerpo, studyInstanceUID);
+      await createEmptyEstudioDetail(estudioId);
+      console.log(`Nuevo estudio creado con ID: ${estudioId} (UID: ${studyInstanceUID})`);
+    } else {
+      console.log(`Estudio con UID ${studyInstanceUID} ya existe. ID: ${estudioId}. Buscando nuevas imágenes...`);
+    }
+
+    // 6. Register any new images found in the canonical folder.
+    const convertedFiles = getImagesFromFolder(finalOutputPatientPath);
+    for (const jpgPath of convertedFiles) {
+      const imagePath = `https://imagenes.sanatorioprivadogatti.com.ar/api/${path.relative(process.cwd(), jpgPath).replace(/\\/g, "/")}`;
+
+      const [exists] = await db.query(
+        "SELECT 1 FROM imagenes_estudios WHERE estudio_id = ? AND imagen_url = ? LIMIT 1",
+        [estudioId, imagePath]
       );
 
-    for (const dir of directories) {
-      const folderPath = path.join(imagesFolder, dir);
-      const stats = fs.statSync(folderPath);
-
-      if (stats.mtime.getTime() > lastRunTime.getTime()) {
-        const fecha = dir;
-        const subDirs = fs
-          .readdirSync(folderPath)
-          .filter((item) =>
-            fs.statSync(path.join(folderPath, item)).isDirectory()
-          );
-
-        for (const subDir of subDirs) {
-          const patientFolderPath = path.join(folderPath, subDir);
-          await processImagesForPatient(patientFolderPath, fecha);
-        }
-      } else {
-        console.log(
-          `La carpeta de fecha ${dir} no ha sido modificada desde la última ejecución.`
-        );
+      if (exists.length === 0) {
+        await registerImage(estudioId, imagePath);
+        console.log(`Registrando NUEVA imagen: ${path.basename(jpgPath)} para el estudio ${estudioId}`);
       }
     }
 
-    await updateLastRunTime();
-    console.log("Actualización completada. Próxima actualización en 1 hora...");
-  } catch (err) {
-    console.error("Error al actualizar las imágenes:", err);
+  } catch (error) {
+    console.error(`Error procesando la carpeta del paciente ${patientFolderPath}:`, error);
   }
 };
 
+// Variable de bloqueo para evitar ejecuciones concurrentes
+let isUpdating = false;
+
+const updateImagesDicom = async () => {
+  if (isUpdating) {
+    console.log("El proceso de actualización ya está en ejecución. Se omite esta llamada.");
+    return;
+  }
+
+  isUpdating = true;
+  console.log("Iniciando proceso de actualización de imágenes...");
+
+  try {
+    if (!fs.existsSync(imagesFolder)) {
+      console.error(`El directorio de imágenes no existe: ${imagesFolder}`);
+      return;
+    }
+    const today = new Date();
+    const year = today.getFullYear().toString().slice(-2);
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const day = today.getDate().toString().padStart(2, '0');
+    const datePrefix = `${year}${month}${day}`;
+
+    const allDirs = fs.readdirSync(imagesFolder, { withFileTypes: true });
+    const todayDirs = allDirs
+      .filter(
+        (dirent) =>
+          dirent.isDirectory() &&
+          dirent.name.startsWith(datePrefix) &&
+          !dirent.name.startsWith("$")
+      )
+      .map((dirent) => dirent.name);
+
+    if (todayDirs.length === 0) {
+      console.log(
+        `No se encontraron directorios para el prefijo de fecha de hoy: ${datePrefix}`
+      );
+      return;
+    }
+
+    console.log(
+      `Se encontraron ${todayDirs.length} directorios para hoy:`,
+      todayDirs
+    );
+
+    for (const dir of todayDirs) {
+      const dateFolderPath = path.join(imagesFolder, dir);
+      const patientDirs = fs.readdirSync(dateFolderPath, { withFileTypes: true })
+        .filter(
+          (dirent) =>
+            dirent.isDirectory() && dirent.name.toUpperCase().startsWith("PID")
+        )
+        .map((dirent) => dirent.name);
+
+      for (const patientDir of patientDirs) {
+        const patientFolderPath = path.join(dateFolderPath, patientDir);
+        await processImagesForPatient(patientFolderPath);
+      }
+    }
+
+    console.log("Proceso de actualización de imágenes completado.");
+  } catch (err) {
+    console.error("Error durante la actualización de imágenes:", err);
+  } finally {
+    isUpdating = false;
+    console.log("El proceso de actualización ha finalizado y el bloqueo ha sido liberado.");
+  }
+};
+
+// --- Ejecución ---
 // Ejecutar la función de actualización cada 10 minutos
-setInterval(updateImagesDicom, 3600000); // 3600000 ms = 1 hora
-console.log("Script iniciado. Actualizando imágenes cada 1 hora...");
+setInterval(updateImagesDicom, 600000);
+console.log("Script iniciado. Buscando nuevas imágenes cada 10 minutos...");
+
+// Ejecución inicial al arrancar
+updateImagesDicom();
 
 export default updateImagesDicom;
