@@ -142,6 +142,7 @@ const getImagesFromFolder = (folderPath) => {
   return imageFiles;
 };
 
+
 const runPythonScript = (inputDir, outputDir) => {
   return new Promise((resolve, reject) => {
     // Usar 'py' en lugar de 'python' para mayor compatibilidad en Windows.
@@ -207,7 +208,7 @@ const getByDni = async (dni) => {
   return rows;
 };
 
-const insertUser = async (dni, role_id, apellido, nombre, genero, edad) => {
+const insertUser = async (dni, role_id, nombre, apellido, genero, edad) => {
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(dni.toString(), salt);
   const [result] = await db.query(
@@ -293,37 +294,41 @@ const processImagesForPatient = async (patientFolderPath) => {
       fs.mkdirSync(finalOutputPatientPath, { recursive: true });
     }
 
+
     // 4. Move converted images from the temporary path to the final canonical path.
     if (fs.existsSync(tempOutputPatientPath)) {
-        const tempFiles = fs.readdirSync(tempOutputPatientPath);
-        for (const file of tempFiles) {
-            const oldPath = path.join(tempOutputPatientPath, file);
-            const newPath = path.join(finalOutputPatientPath, file);
-            if (!fs.existsSync(newPath)) {
-                fs.renameSync(oldPath, newPath);
-            }
-        }
-        fs.rmSync(tempOutputPatientPath, { recursive: true, force: true });
-    }
+      const tempFiles = fs.readdirSync(tempOutputPatientPath);
+      for (const file of tempFiles) {
+          const oldPath = path.join(tempOutputPatientPath, file);
+          const newPath = path.join(finalOutputPatientPath, file);
+          if (!fs.existsSync(newPath)) {
+              fs.renameSync(oldPath, newPath);
+          }
+      }
+      fs.rmSync(tempOutputPatientPath, { recursive: true, force: true });
+  }
 
-    const dniPaciente = datosDicom.PatientID;
-    if (!dniPaciente) {
-      console.log(`No se pudo obtener el DNI para ${patientFolderPath}, se omite.`);
-      return;
-    }
+  const dniPaciente = datosDicom.PatientID;
+  if (!dniPaciente) {
+    console.log(`No se pudo obtener el DNI para ${patientFolderPath}, se omite.`);
+    return;
+  }
 
-    let user = await getByDni(dniPaciente);
-    if (!user) {
-      const nombreCapitalizado = capitalizar((datosDicom.PatientName || "").split(",")[0]);
-      const apellidoCapitalizado = capitalizar((datosDicom.PatientName || "").split(",")[1] || "");
-      const sexoTraducido = traducciones_sexo[datosDicom.PatientSex] || "No especificado";
-      await insertUser(dniPaciente, 1, apellidoCapitalizado, nombreCapitalizado, sexoTraducido, datosDicom.PatientBirthDate);
-      console.log(`Nuevo usuario creado para DNI: ${dniPaciente}`);
-    }
+  const user = await getByDni(dniPaciente);
+  if (user.length === 0) {
+    const nombreCompleto = (datosDicom.PatientName || "").split("^");
+    const apellido = capitalizar(nombreCompleto[0] || "");
+    const nombre = capitalizar(nombreCompleto[1] || "");
+    const genero = traducciones_sexo[datosDicom.PatientSex] || "Otro";
+    const fechaNacimiento = formatStudyDate(datosDicom.PatientBirthDate);
 
-    const part_cuerpo = traducciones_body_part[datosDicom.BodyPartExamined.toUpperCase()] || capitalizar(datosDicom.BodyPartExamined) || "No Especificado";
-    const tipoEstudioId = traducciones_modality[datosDicom.Modality.toUpperCase()] || 11;
-    const fechaEstudioReal = formatStudyDate(datosDicom.StudyDate);
+    await insertUser(dniPaciente, 3, nombre, apellido, genero, fechaNacimiento);
+    console.log(`Nuevo usuario creado para DNI: ${dniPaciente}`);
+  }
+
+  const part_cuerpo = traducciones_body_part[datosDicom.BodyPartExamined.toUpperCase()] || capitalizar(datosDicom.BodyPartExamined) || "No Especificado";
+  const tipoEstudioId = traducciones_modality[datosDicom.Modality.toUpperCase()] || 11;
+  const fechaEstudioReal = formatStudyDate(datosDicom.StudyDate);
 
     // 5. Find or create the study record in the database.
     let estudioId = await getExistingEstudio(studyInstanceUID);

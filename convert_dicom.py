@@ -108,10 +108,12 @@ def main(input_dir, output_dir):
         
         # Prioridad 3: Intentar con el nombre de la carpeta
         if not datos_finales.get("PatientID"):
+            patient_id = None  # Inicializar para evitar NameError
             folder_name = os.path.basename(input_dir)
             if '_' in folder_name:
                 patient_id = folder_name.split('_')[-1]
             else:
+                # Fallback to just numeric parts of the folder name
                 numeric_part = ''.join(filter(str.isdigit, folder_name))
                 if numeric_part:
                     patient_id = numeric_part
@@ -125,6 +127,10 @@ def main(input_dir, output_dir):
     ]
     for key in keys_to_ensure:
         datos_finales.setdefault(key, "")
+
+    # Limpiar el PatientID para que solo contenga números
+    if datos_finales.get("PatientID"):
+        datos_finales["PatientID"] = ''.join(filter(str.isdigit, datos_finales["PatientID"]))
 
     # Imprimir el JSON final para Node.js
     print(json.dumps(datos_finales))
